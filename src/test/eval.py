@@ -19,6 +19,7 @@ import sys
 from tqdm import tqdm
 import shutil
 from breathmask_model import BreathMask
+from load_model import UnsellModel
 sys.path.append(os.path.join(os.path.dirname(__file__),'../configs'))
 from config import cfg
 
@@ -76,7 +77,8 @@ def evalue(args):
     result_out = args.out_file
     img_dir = args.img_dir
     save_dir = args.save_dir
-    Model = BreathMask(args)
+    # Model = BreathMask(args)
+    Model = UnsellModel(args)
     if file_in is None:
         print("input file is None",file_in)
         return None
@@ -108,6 +110,7 @@ def evalue(args):
         # img_data = np.expand_dims(img_data,0)
         img_list = [img_data]
         probility,pred_id = Model.inference(img_list)
+        # print(pred_id,real_label)
         pred_id = int(pred_id[0])
         if pred_id == 1:
             if pred_id == int(real_label):

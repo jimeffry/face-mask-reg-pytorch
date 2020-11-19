@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 import collections
 
@@ -197,6 +198,7 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x):
         # See note [TorchScript super()]
+        x = x.permute(0,3,1,2)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -209,10 +211,11 @@ class ResNet(nn.Module):
         x = x.mean([2,3])
         # x = self.avgpool(x)
         # x = torch.flatten(x, 1)
+        # x = F.dropout2d(x,p=0.5,training=True)
         x = self.fc(x)
-        max_conf1, _ = torch.max(x[:, 0:3], dim=1, keepdim=True)
-        max_conf2, _ = torch.max(x[:,3:],dim=1,keepdim=True)
-        x = torch.cat((max_conf1, max_conf2), dim=1)
+        # max_conf1, _ = torch.max(x[:, 0:3], dim=1, keepdim=True)
+        # max_conf2, _ = torch.max(x[:,3:],dim=1,keepdim=True)
+        # x = torch.cat((max_conf1, max_conf2), dim=1)
         x = self.softmax(x)
         return x
 

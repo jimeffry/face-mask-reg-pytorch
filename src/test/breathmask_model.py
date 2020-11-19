@@ -12,7 +12,6 @@ import time
 import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-
 sys.path.append(os.path.join(os.path.dirname(__file__),'../configs'))
 from config import cfg
 sys.path.append(os.path.join(os.path.dirname(__file__),'../networks'))
@@ -56,7 +55,7 @@ class BreathMask(object):
         else:
             device = 'cpu'
         # self.net = shufflenet_v2_x1_0(pretrained=False,num_classes=6).to(device)
-        self.net = resnet50(pretrained=False,num_classes=6).to(device)
+        self.net = resnet50(pretrained=False,num_classes=5).to(device)
         # self.net = mobilenet_v2(pretrained=False,num_classes=6).to(device)
         state_dict = torch.load(modelpath,map_location=device)
         state_dict = self.rename_dict(state_dict)
@@ -64,6 +63,7 @@ class BreathMask(object):
         self.net.eval()
         if self.use_cuda:
             cudnn.benckmark = True
+        # torch.save(self.net.state_dict(),'rbcar_best.pth')
 
     def rename_dict(self,state_dict):
         state_dict_new = dict()
@@ -80,6 +80,9 @@ class BreathMask(object):
         img_out = []
         for img in imgs:
             img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+            w,h = img.shape[:2]
+            if w != cfg.InputSize_w or h != cfg.InputSize_h:
+                img = cv2.resize(img,(cfg.InputSize_w,cfg.InputSize_h))
             img = img.astype('float32')
             img /= 255.0
             img -= rgb_mean
@@ -106,5 +109,4 @@ if __name__ == '__main__':
     args = parms()
     detector = HeadCount(args)
     imgpath = args.file_in
-    webwxgetmsgimg
     detector.headcnts(imgpath)

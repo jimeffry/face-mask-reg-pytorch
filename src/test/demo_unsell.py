@@ -2,6 +2,8 @@
 import sys
 import os
 import argparse
+import shutil
+import json
 
 import cv2
 import time
@@ -9,20 +11,11 @@ import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
-#from breathmask_model import BreathMask
+from load_model import UnsellModel,UnsellModelTf
 sys.path.append(os.path.join(os.path.dirname(__file__),'../configs'))
 from config import cfg
-sys.path.append(os.path.join(os.path.dirname(__file__),'../face_detect'))
-from Detector import MtcnnDetector
 sys.path.append(os.path.join(os.path.dirname(__file__),'../utils'))
 from util import Img_Pad
-sys.path.append(os.path.join(os.path.dirname(__file__),'../retinateface'))
-from detector_face import DetectorFace
-from retinaface_tf import RetinaFace_TF
-
-from breathmask_model import BreathMask
-# from breathmask_model_tf import BreathMask
-
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -30,7 +23,7 @@ def parms():
     parser = argparse.ArgumentParser(description='CSRnet demo')
     parser.add_argument('--save_dir', type=str, default='tmp/',
                         help='Directory for detect result')
-    parser.add_argument('--breath_modelpath', type=str,
+    parser.add_argument('--unsell_modelpath', type=str,
                         default='weights/s3fd.pth', help='trained model')
     parser.add_argument('--threshold', default=0.65, type=float,
                         help='Final confidence threshold')
@@ -58,11 +51,10 @@ def parms():
     return parser.parse_args()
 
 
-class BreathMastTest(object):
+class UnsellTest(object):
     def __init__(self,args):
-        # self.Detect_Model = MtcnnDetector(args)
-        self.Detect_Model = RetinaFace_TF(args)
-        self.BreathMaskModel = BreathMask(args)
+        # self.Model = UnsellModel(args)
+        self.Model = UnsellModelTf(args)
         self.threshold = args.threshold
         self.img_dir = args.img_dir
         self.real_num = 0
@@ -87,59 +79,39 @@ class BreathMastTest(object):
             cropimg = img[y1:y2,x1:x2,:]
         return cropimg
     
-    def label_show(self,img,rectangles,scores,pred_id):
+    def label_show(self,img,scores,pred_id):
         '''
         scores: shape-[batch,cls_nums]
         pred_id: shape-[batch,cls_nums]
         rectangles: shape-[batch,15]
             0-5: x1,y1,x2,y2,score
         '''
-        show_labels = ['no_weare','weare_mask']
+        show_labels = ['normal','unsell']
         colors = [(0,0,255),(255,0,0)]
-        for idx,box in enumerate(rectangles):
-            tmp_pred = pred_id[idx]
-            tmp_score = '%.2f' % scores[idx]
-            show_name = show_labels[int(tmp_pred)] #+'_'+tmp_score
-            color = colors[int(tmp_pred)]
-            cv2.rectangle(img,(int(box[0]),int(box[1])),(int(box[2]),int(box[3])),color,1)
-            font=cv2.FONT_HERSHEY_COMPLEX_SMALL
-            font_scale = int((box[3]-box[1])*0.01)
-            points = (int(box[0]),int(box[1]))
-            cv2.putText(img, show_name, points, font, 1.0, color, 2)
+        tmp_pred = pred_id
+        tmp_score = '%.2f' % scores[int(tmp_pred)]
+        show_name = show_labels[int(tmp_pred)] #+'_'+tmp_score
+        color = colors[int(tmp_pred)]
+        font=cv2.FONT_HERSHEY_COMPLEX_SMALL
+        # font_scale = int((box[3]-box[1])*0.01)
+        points = (10,10)
+        cv2.putText(img, show_name, points, font, 1.0, color, 2)
         return img
         
     def inference_img(self,img):
         t1 = time.time()
         imgorg = img.copy()
         orgreg = 0
-        img_out = img
         pred_ids = []
-        if not orgreg:
-            rectangles = self.Detect_Model.detectFace(imgorg)
-            face_breathmasks = []
-            frame_h,frame_w = imgorg.shape[:2]
-            img_out = img.copy()
-            pred_ids = []
-            box_valid = []
-            if len(rectangles)> 0:
-                for box in rectangles:
-                    img_verify = self.img_crop(imgorg,box,frame_w,frame_h)
-                    if len(img_verify) ==0:
-                        continue
-                    box_valid.append(box)
-                    img_verify = cv2.resize(img_verify,(112,112))
-                    # img_verify = Img_Pad(img_verify,[cfg.InputSize_h,cfg.InputSize_w])
-                    cv2.imshow('crop',img_verify)
-                    # cv2.waitKey(0)
-                    face_breathmasks.append(img_verify)
-                scores,pred_ids = self.BreathMaskModel.inference(face_breathmasks)
-                img_out = self.label_show(img,box_valid,scores,pred_ids)
-        else:
-            scores,pred_ids = self.BreathMaskModel.inference([img])
-            img_out = self.label_show(img,[[10,10,119,119]],scores,pred_ids)
-        t2 = time.time()
+        scores,pred_ids = self.Model.inference([img])
+        # img_out = self.label_show(img,scores[0],pred_ids[0])
         #print('consuming:',t2-t1)
-        return img_out,pred_ids
+        return scores[0],pred_ids[0]
+
+    def putrecord(self,datalist):
+        file = open('ehualu_test.json','w',encoding='utf-8')
+        json.dump(datalist,file,ensure_ascii=False)
+        file.close()
 
     def __call__(self,imgpath):
         if os.path.isdir(imgpath):
@@ -149,28 +121,40 @@ class BreathMastTest(object):
                 img = cv2.imread(tmppath)
                 if img is None:
                     continue
-                frame,cnt_head = self.inference_img(img)
-                # print('heads >> ',cnt_head)
-                cv2.imshow('result',frame)
-                save_name = tmp.strip()
-                savepath = os.path.join(self.save_dir,save_name)
-                cv2.imwrite(savepath,frame)
+                score,pid = self.inference_img(img)
+                print("scores and cls_id:",score,pid,tmp.strip())
+                cv2.imshow('result',img)
+                # save_name = tmp.strip()
+                # savepath = os.path.join(self.save_dir,save_name)
+                # cv2.imwrite(savepath,frame)
                 cv2.waitKey(0) 
         elif os.path.isfile(imgpath) and imgpath.endswith('txt'):
-            # if not os.path.exists(self.save_dir):
-            #     os.makedirs(self.save_dir)
             f_r = open(imgpath,'r')
             file_cnts = f_r.readlines()
+            #**********smoking and calling
+            label_name_list = ['normal','smoking','calling']
+            data_list = []
+            #******** for label and to be classed
+            bg_path = os.path.join(self.save_dir,'bg_imgs')
+            fg_path = os.path.join(self.save_dir,'fg_imgs')
+            pathlist = [bg_path,fg_path]
+            #
+            if not os.path.exists(bg_path):
+                os.makedirs(bg_path)
+            if not os.path.exists(fg_path):
+                os.makedirs(fg_path)
             for j in tqdm(range(len(file_cnts))):
+                record_dict = dict()
                 tmp_file = file_cnts[j].strip()
-                tmp_file_s = tmp_file.split('\t')
+                #*************** here is for label file test
+                tmp_file_s = tmp_file.split(',')
                 if len(tmp_file_s)>0:
                     tmp_file = tmp_file_s[0]
-                    self.real_num = int(tmp_file_s[1])
-                if not tmp_file.endswith('jpg'):
-                    tmp_file = tmp_file +'.jpg'
-                # tmp_path = os.path.join(self.img_dir,tmp_file) 
-                tmp_path = tmp_file
+                    real_label = int(tmp_file_s[1])
+                # if not tmp_file.endswith('jpg'):
+                    # tmp_file = tmp_file +'.jpg'
+                tmp_path = os.path.join(self.img_dir,tmp_file) 
+                # tmp_path = tmp_file
                 if not os.path.exists(tmp_path):
                     print(tmp_path)
                     continue
@@ -178,11 +162,21 @@ class BreathMastTest(object):
                 if img is None:
                     print('None',tmp)
                     continue
-                frame,cnt_head = self.inference_img(img)
-                cv2.imshow('result',frame)
-                #savepath = os.path.join(self.save_dir,save_name)
-                #cv2.imwrite('test.jpg',frame)
-                cv2.waitKey(0) 
+                scores,pred_id = self.inference_img(img)
+                #************ smoking and calling test
+                # record_dict['image_name'] = tmp_file
+                # record_dict['category'] = label_name_list[int(pred_id)]
+                # record_dict['score'] = '%.5f' % scores[int(pred_id)]
+                # data_list.append(record_dict)
+                #************to be classed images
+                # dist_path = os.path.join(pathlist[pred_id],tmp_file)
+                # shutil.copyfile(tmp_path,dist_path)
+                #********* label test files
+                if int(pred_id) != real_label:
+                    tmp_file_s = tmp_file.split('/')
+                    dist_path = os.path.join(pathlist[real_label],tmp_file_s[-1])
+                    shutil.copyfile(tmp_path,dist_path)
+            # self.putrecord(data_list)
         elif os.path.isfile(imgpath) and imgpath.endswith(('.mp4','.avi')) :
             cap = cv2.VideoCapture(imgpath)
             if not cap.isOpened():
@@ -203,9 +197,9 @@ class BreathMastTest(object):
             if img is not None:
                 # grab next frame
                 # update FPS counter
-                frame,cnt_head = self.inference_img(img)
-                print(cnt_head)
-                cv2.imshow('result',frame)
+                score,pid = self.inference_img(img)
+                print("scores and cls_id:",score,pid)
+                cv2.imshow('img',img)
                 # cv2.imwrite('test_a1.jpg',frame)
                 key = cv2.waitKey(0) 
         elif imgpath=='video':
@@ -228,7 +222,7 @@ class BreathMastTest(object):
 
 if __name__ == '__main__':
     args = parms()
-    detector = BreathMastTest(args)
+    detector = UnsellTest(args)
     imgpath = args.file_in
     detector(imgpath)
     # evalu_img(args)

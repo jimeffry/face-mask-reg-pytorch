@@ -25,10 +25,10 @@ class ReadDataset(data.Dataset):
         self.shulf_num = list(range(self.total_num))
         random.shuffle(self.shulf_num)
         # self.rgb_mean = np.array([123.,117.,104.])[np.newaxis, np.newaxis,:].astype('float32')
-        # self.rgb_mean = np.array([0.485, 0.456, 0.406])[np.newaxis, np.newaxis,:].astype('float32')
-        # self.rgb_std = np.array([0.229, 0.224, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
-        self.rgb_mean = np.array([0.5, 0.5, 0.5])[np.newaxis, np.newaxis,:].astype('float32')
-        self.rgb_std = np.array([0.225, 0.225, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
+        self.rgb_mean = np.array([0.485, 0.456, 0.406])[np.newaxis, np.newaxis,:].astype('float32')
+        self.rgb_std = np.array([0.229, 0.224, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
+        # self.rgb_mean = np.array([0.5, 0.5, 0.5])[np.newaxis, np.newaxis,:].astype('float32')
+        # self.rgb_std = np.array([0.225, 0.225, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
 
     def loadtxt(self,annotxt):
         self.data_r = open(annotxt,'r')
@@ -53,7 +53,6 @@ class ReadDataset(data.Dataset):
         tmp_annotation = self.annotations[idx]
         tmp_path = tmp_annotation[0]
         img_data = cv2.imread(tmp_path)
-        img_data = cv2.cvtColor(img_data,cv2.COLOR_BGR2RGB)
         gt_label = tmp_annotation[1]
         img = cv2.cvtColor(img_data,cv2.COLOR_BGR2RGB)
         img = self.prepro(img)

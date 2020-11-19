@@ -11,11 +11,11 @@ from config import cfg
 def dataset_factory(dataset,mode='train'):
     train_dataset = None
     val_dataset = None
-    if dataset == 'mafa' :
-        train_dataset = ReadDataset(cfg.Imgdir,cfg.train_file)
-        val_dataset = ReadDataset(cfg.Imgdir,cfg.test_file)
-    else:
-        print("please input right dataset")
+    # if dataset == 'mafa' :
+    train_dataset = ReadDataset(cfg.Imgdir,cfg.train_file)
+    val_dataset = ReadDataset(cfg.Imgdir,cfg.test_file)
+    # else:
+        # print("please input right dataset")
     return train_dataset, val_dataset
 
 def detection_collate(batch):

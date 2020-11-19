@@ -24,10 +24,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__),'../networks'))
 from resnet import resnet50
 from mobilenet import mobilenet_v2
 from shufflenet import shufflenet_v2_x1_0
+from resnet_cbam import resnet18_cbam,resnet34_cbam,resnet50_cbam
 sys.path.append(os.path.join(os.path.dirname(__file__),'../losses'))
 from multiloss import MultiLoss
 
-#os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -35,58 +35,45 @@ def params():
     parser = argparse.ArgumentParser(
         description='S3FD face Detector Training With Pytorch')
     train_set = parser.add_mutually_exclusive_group()
-    parser.add_argument('--dataset',
-                        default='ShangHai',
-                        choices=['ShangHai', 'mafa','crowedhuman'],
-                        help='Train target')
-    parser.add_argument('--basenet',
-                        default='vgg16_reducedfc.pth',
-                        help='Pretrained base model')
-    parser.add_argument('--batch_size',
-                        default=2, type=int,
-                        help='Batch size for training')
-    parser.add_argument('--resume',
-                        default=None, type=str,
-                        help='Checkpoint state_dict file to resume training from')
-    parser.add_argument('--num_workers',
-                        default=4, type=int,
-                        help='Number of workers used in dataloading')
-    parser.add_argument('--cuda',
-                        default=True, type=str2bool,
-                        help='Use CUDA to train model')
-    parser.add_argument('--lr', '--learning-rate',
-                        default=1e-3, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--momentum',
-                        default=0.9, type=float,
-                        help='Momentum value for optim')
-    parser.add_argument('--weight_decay',
-                        default=5e-4, type=float,
-                        help='Weight decay for SGD')
-    parser.add_argument('--gamma',
-                        default=0.1, type=float,
-                        help='Gamma update for SGD')
-    parser.add_argument('--multigpu',
-                        default=False, type=str2bool,
-                        help='Use mutil Gpu training')
-    parser.add_argument('--save_folder',
-                        default='weights/',
-                        help='Directory for saving checkpoint models')
-    parser.add_argument('--log_dir',
-                        default='../logs',
-                        help='Directory for saving logs')
+    parser.add_argument('--dataset',default='ShangHai',help='Train target')
+    parser.add_argument('--basenet',default='vgg16_reducedfc.pth', help='Pretrained base model')
+    parser.add_argument('--batch_size',default=2, type=int,help='Batch size for training')
+    parser.add_argument('--resume',default=None, type=str,help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--num_workers',default=4, type=int,help='Number of workers used in dataloading')
+    parser.add_argument('--cuda',default=True, type=str2bool,help='Use CUDA to train model')
+    parser.add_argument('--lr', '--learning-rate',default=1e-3, type=float,help='initial learning rate')
+    parser.add_argument('--cuda_num',default='1', type=str,help='Use CUDA to train model')
+    parser.add_argument('--momentum',default=0.9, type=float,help='Momentum value for optim')
+    parser.add_argument('--weight_decay',default=5e-4, type=float,help='Weight decay for SGD')
+    parser.add_argument('--gamma',default=0.1, type=float,help='Gamma update for SGD')
+    parser.add_argument('--multigpu',default=False, type=str2bool,help='Use mutil Gpu training')
+    parser.add_argument('--save_folder',default='weights/',help='Directory for saving checkpoint models')
+    parser.add_argument('--log_dir',default='../logs',help='Directory for saving logs')
     return parser.parse_args()
 
+
+def renamedict(pretrained_state_dict):
+    fsd = collections.OrderedDict()
+    # 10 convlution *(weight, bias) = 20 parameters
+    res_iter = pretrained_state_dict.items()
+    for i in range(len(res_iter)):
+        temp_key = list(res_iter)[i][0]
+        # print(temp_key)
+        if 'fc' in temp_key:
+            continue
+        fsd[temp_key] = list(res_iter)[i][1]
+    return fsd
+
 def train_net(args):
-    if torch.cuda.is_available():
-        if args.cuda:
-            torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        if not args.cuda:
-            print("WARNING: It looks like you have a CUDA device, but aren't " +
-                "using CUDA.\nRun with --cuda for optimal training speed.")
-            torch.set_default_tensor_type('torch.FloatTensor')
-    else:
-        torch.set_default_tensor_type('torch.FloatTensor')
+    # if torch.cuda.is_available():
+    #     if args.cuda:
+    #         torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    #     if not args.cuda:
+    #         print("WARNING: It looks like you have a CUDA device, but aren't " +
+    #             "using CUDA.\nRun with --cuda for optimal training speed.")
+    #         torch.set_default_tensor_type('torch.FloatTensor')
+    # else:
+    #     torch.set_default_tensor_type('torch.FloatTensor')
     if not os.path.exists(args.save_folder):
         os.makedirs(args.save_folder)
     #*******load data
@@ -96,29 +83,29 @@ def train_net(args):
                                 shuffle=True,
                                 collate_fn=detection_collate,
                                 pin_memory=True)
-    val_batchsize = args.batch_size
+    val_batchsize = 2 #args.batch_size
     val_loader = data.DataLoader(val_dataset, val_batchsize,
                                 num_workers=args.num_workers,
                                 shuffle=False,
                                 collate_fn=detection_collate,
                                 pin_memory=True)
-    if args.cuda:
+    #load net
+    print(args.cuda_num)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_num
+    if args.cuda and torch.cuda.is_available():
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
-    net = resnet50(pretrained=True,num_classes=6).to(device)
+    # net = resnet50(pretrained=True,num_classes=5).to(device)
     # net = mobilenet_v2(pretrained=True,num_classes=5).to(device)
     # net = shufflenet_v2_x1_0(pretrained=True,num_classes=2).to(device)
+    net = resnet50_cbam(pretrained=True,num_classes=5).to(device)
     #print(">>",net)
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
         state_dict = torch.load(args.resume,map_location=device)
-        if args.multigpu:
-            state_dict_new = dict()
-            for key,value in list(state_dict.items()):
-                state_dict_new[key[7:]] = value
-            state_dict = state_dict_new
-        net.load_state_dict(state_dict)
+        # state_dict = renamedict(state_dict)
+        net.load_state_dict(state_dict,strict=False)
     if args.multigpu:
         net = torch.nn.DataParallel(net)
         cudnn.benckmark = True
@@ -149,17 +136,19 @@ def main():
     step_index = 0
     start_epoch = 0
     iteration = 0
-    net.train()
+    # net.train()
     tmp_diff = 0
     # rgb_mean = np.array([123.,117.,104.])[np.newaxis, np.newaxis,:].astype('float32')
     # rgb_std = np.array([0.229, 0.224, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
     rgb_mean = np.array([0.5, 0.5, 0.5])[np.newaxis, np.newaxis,:].astype('float32')
     rgb_std = np.array([0.225, 0.225, 0.225])[np.newaxis, np.newaxis,:].astype('float32')
     loss_hist = collections.deque(maxlen=200)
+    
     for epoch in range(start_epoch, cfg.EPOCHES):
         #losses = 0
         for batch_idx, (images, targets) in enumerate(train_loader):
             save_fg = 0
+            net.train()
             if args.cuda:
                 images = images.cuda() 
                 targets = targets.cuda()
@@ -194,25 +183,27 @@ def main():
             optimizer.step()
             # t1 = time.time()
             loss_hist.append(float(loss.item()))
-            if iteration % 20 == 0:
+            if iteration % 100 == 0:
                 #tloss = losses / 100.0
                 #print('tl',loss.data,tloss)
                 logger.info('epoch:{} || iter:{} || tloss:{:.6f},lossconf:{:.6f} || lr:{:.6f}'.format(epoch,iteration,np.mean(loss_hist),loss.item(),optimizer.param_groups[0]['lr']))
                 # val(args,net,val_loader,logger)
-            if iteration != 0 and iteration % 200 == 0:
+            if iteration != 0 and iteration % 300 == 0:
                 # sfile = 'csr_' + args.dataset + '_' + repr(iteration) + '.pth'
-                sfile = 'bm_'+args.dataset+'_best.pth'
+                sfile = 'unsell_'+args.dataset+'_best.pth'
                 tmp_val = val(args,net,val_loader,logger)
                 if tmp_val > tmp_diff:
                     save_fg = 1
                     tmp_diff = tmp_val
                 if save_fg :
                     logger.info('Saving state, iter: %d' % iteration)
-                    torch.save(net.state_dict(),os.path.join(args.save_folder, sfile))
+                    if args.multigpu:
+                        torch.save(net.module.state_dict(),os.path.join(args.save_folder, sfile))
+                    else:
+                        torch.save(net.state_dict(),os.path.join(args.save_folder, sfile))
             iteration += 1
         if iteration == cfg.MAX_STEPS:
             break
-    torch.save(net.state_dict(),os.path.join(args.save_folder,'bm_'+args.dataset+'_final.pth'))
 
 def val(args,net,val_loader,logger):
     net.eval()
@@ -224,14 +215,14 @@ def val(args,net,val_loader,logger):
                 images = images.cuda()
                 targets = targets.cuda()
             out = net(images).detach()
-            out = F.softmax(out,dim=-1)
+            out = F.softmax(out,dim=1)
             pred = torch.argmax(out,dim=1)
             pos_num = pred.eq(targets)
             tmp = pos_num.sum()
             eq_sum += tmp.item()
             # print(eq_sum)
         t2 = time.time()
-        total_num = args.batch_size * (batch_idx+1)
+        total_num = 2 *(batch_idx+1)
         print('Timer: %.4f' % (t2 - t1),'eq:',eq_sum,'total:',total_num)
         logger.info('test acc:%.4f' % (eq_sum/total_num))
     return eq_sum/total_num
